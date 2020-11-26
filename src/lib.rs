@@ -1,9 +1,12 @@
 #![feature(test)]
 
-// #[cfg(not(feature = "double_precision"))]
+use std::ops::Range;
+use std::hint::unreachable_unchecked;
+
+#[cfg(not(feature = "double_precision"))]
 pub type Float = f32;
-// #[cfg(feature = "double_precision")]
-// pub type Float = f64;
+#[cfg(feature = "double_precision")]
+pub type Float = f64;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Point { pub x: Float, pub y: Float }
@@ -76,19 +79,26 @@ pub fn simplify_curve(points: &[Point], tolerance: Float) -> Vec<Point> {
     // We need to duplicate the first and last point when
     // simplifying a closed path
     if closed {
-        let mut new_cur_points = vec![points.last().copied().unwrap()];
+        let last = match points.last().copied() {
+            Some(s) => s,
+            None => unsafe { unreachable_unchecked() },
+        };
+        let first = match points.first().copied() {
+            Some(s) => s,
+            None => unsafe { unreachable_unchecked() },
+        };
+        let mut new_cur_points = vec![last];
         new_cur_points.extend(cur_points.drain(..));
-        new_cur_points.push(points.first().copied().unwrap());
+        new_cur_points.push(first);
         cur_points = new_cur_points;
     }
 
     fit(&cur_points[..], tolerance)
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct Split {
-    global_range_start: usize,
-    global_range_end: usize,
+    global_range: Range<usize>,
     tan1: Point,
     tan2: Point,
 }
@@ -101,17 +111,33 @@ fn fit(points: &[Point], tolerance: Float) -> Vec<Point> {
     let mut segments = Vec::new();
     let distances = chord_length_parametrize(points);
 
+    if distances.len() != points.len() {
+        return segments; // never happens, necessary for compiler
+    }
+
+    // elide bounds checks
+    if points.len() < 2 {
+        return segments;
+    } else if points.len() == 2 {
+        return vec![points[0], points[1]];
+    }
+
     let mut splits_to_eval = vec![Split {
-        global_range_start: 0,
-        global_range_end: points.len(),
+        global_range: 0..points.len(),
         tan1: points[1].subtract(points[0]),
         tan2: points[points.len() - 2].subtract(points[points.len() - 1]),
     }];
 
     while let Some(split) = splits_to_eval.pop() {
+
+        // elide bounds checks
+        if split.global_range.end > points.len() {
+            continue;
+        }
+
         let result = fit_cubic(FitCubicParams {
-            points: &points[split.global_range_start..split.global_range_end],
-            chord_lengths: &distances[split.global_range_start..split.global_range_end],
+            points: &points[split.global_range.clone()],
+            chord_lengths: &distances[split.global_range.clone()],
             segments: &mut segments,
             error: tolerance,
             tan1: split.tan1,
@@ -120,17 +146,15 @@ fn fit(points: &[Point], tolerance: Float) -> Vec<Point> {
 
         if let Some(r) = result {
             // Fitting failed -- split at max error point and fit recursively
-            let tan_center = points[split.global_range_start + r - 1].subtract(points[split.global_range_start + r + 1]);
+            let tan_center = points[split.global_range.start + r - 1].subtract(points[split.global_range.start + r + 1]);
             splits_to_eval.extend_from_slice(&[
                 Split {
-                    global_range_start: split.global_range_start,
-                    global_range_end: split.global_range_start + r + 1,
+                    global_range: split.global_range.start..(split.global_range.start + r + 1),
                     tan1: split.tan1,
                     tan2: tan_center,
                 },
                 Split {
-                    global_range_start: split.global_range_start + r,
-                    global_range_end: split.global_range_end,
+                    global_range: (split.global_range.start + r)..split.global_range.end,
                     tan1: tan_center.negate(),
                     tan2: split.tan2,
                 },
@@ -175,8 +199,15 @@ fn fit_cubic(params: FitCubicParams) -> Option<usize> {
     // Parameterize points, and attempt to fit curve
     // (Slightly) faster version of chord lengths, re-uses the results from original count
     let mut u_prime = chord_lengths.to_owned();
-    let u_prime_first = u_prime.first().copied().unwrap();
-    let u_prime_last = u_prime.last().copied().unwrap() - u_prime_first;
+    let u_prime_first = match u_prime.first().copied() {
+        Some(s) => s,
+        None => unsafe { unreachable_unchecked() },
+    };
+    let u_prime_last = match u_prime.last().copied() {
+        Some(s) => s,
+        None => unsafe { unreachable_unchecked() },
+    };
+    let u_prime_last = u_prime_last - u_prime_first;
     u_prime.iter_mut().for_each(|p| { *p = (*p - u_prime_first) / u_prime_last; });
 
     let mut max_error = error.max(error.powi(2));
@@ -219,9 +250,9 @@ fn add_curve(segments: &mut Vec<Point>, curve: &[Point;4]) {
 #[allow(non_snake_case)]
 fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point) -> [Point;4] {
 
-    assert!(u_prime.len() > 3);
-    assert!(points.len() > 3);
-    assert!(u_prime.len() == points.len());
+    debug_assert!(u_prime.len() > 3);
+    debug_assert!(points.len() > 3);
+    debug_assert!(u_prime.len() == points.len());
 
     let pt1 = &points[0];
     let pt2 = &points[points.len() - 1];
@@ -387,8 +418,11 @@ macro_rules! evaluate {
 }
 
 // evaluate the bezier curve at point t
+#[inline]
 fn evaluate_4(curve: &[Point;4], t: Float) -> Point { let ret = evaluate!(curve, t); ret }
+#[inline]
 fn evaluate_3(curve: &[Point;3], t: Float) -> Point { let ret = evaluate!(curve, t); ret }
+#[inline]
 fn evaluate_2(curve: &[Point;2], t: Float) -> Point { let ret = evaluate!(curve, t); ret }
 
 // chord length parametrize the curve points[first..last]
@@ -407,7 +441,6 @@ fn chord_length_parametrize(points: &[Point]) -> Vec<Float> {
     u
 }
 
-#[derive(Debug, Copy, Clone)]
 struct FindMaxErrorReturn {
     error: Float,
     index: usize

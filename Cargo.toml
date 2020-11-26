@@ -5,3 +5,7 @@ authors = ["fschutt <felix.schuett@maps4print.com>"]
 edition = "2018"
 
 [dependencies]
+
+[features]
+default = []
+double_precision = []
