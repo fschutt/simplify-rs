@@ -1,5 +1,12 @@
+#![feature(test)]
+
+// #[cfg(not(feature = "double_precision"))]
+pub type Float = f32;
+// #[cfg(feature = "double_precision")]
+// pub type Float = f64;
+
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
-pub struct Point { pub x: f64, pub y: f64 }
+pub struct Point { pub x: Float, pub y: Float }
 
 impl Point {
     #[inline]
@@ -7,17 +14,17 @@ impl Point {
     #[inline]
     pub fn subtract(&self, p: Point) -> Point { Point { x: self.x - p.x, y: self.y - p.y } }
     #[inline]
-    pub fn multiply(&self, f: f64) -> Point { Point { x: self.x * f, y: self.y * f } }
+    pub fn multiply(&self, f: Float) -> Point { Point { x: self.x * f, y: self.y * f } }
     #[inline]
     pub fn negate(&self) -> Point { Point { x: -self.x, y: -self.y } }
     #[inline]
-    pub fn distance(&self, p: Point) -> f64 { (p.x - self.x).hypot(p.y - self.y) }
+    pub fn distance(&self, p: Point) -> Float { (p.x - self.x).hypot(p.y - self.y) }
     #[inline]
-    pub fn dot(&self, p: Point) -> f64 { self.x * p.x + self.y * p.y }
+    pub fn dot(&self, p: Point) -> Float { self.x * p.x + self.y * p.y }
     #[inline]
-    pub fn normalize(&self, length: f64) -> Point {
+    pub fn normalize(&self, length: Float) -> Point {
         let current =  self.x.hypot(self.y);
-        let scale = if current.abs() > f64::EPSILON { length / current } else { 0.0 };
+        let scale = if current.abs() > Float::EPSILON { length / current } else { 0.0 };
         let res = Point { x: self.x * scale, y: self.y * scale };
         res
     }
@@ -42,7 +49,7 @@ pub const DEFAULT_TOLERANCE: f32 = 2.5;
 /// @return true if the method was capable of fitting curves
 ///     through the path's segment points
 ///
-pub fn simplify_curve(points: &[Point], tolerance: f64) -> Vec<Point> {
+pub fn simplify_curve(points: &[Point], tolerance: Float) -> Vec<Point> {
 
     // filter points for duplicates
     let mut cur_points = points.windows(2).filter_map(|w| {
@@ -87,7 +94,7 @@ struct Split {
 }
 
 #[inline]
-fn fit(points: &[Point], tolerance: f64) -> Vec<Point> {
+fn fit(points: &[Point], tolerance: Float) -> Vec<Point> {
 
     // To support reducing paths with multiple points in the same place
     // to one segment:
@@ -137,8 +144,8 @@ fn fit(points: &[Point], tolerance: f64) -> Vec<Point> {
 struct FitCubicParams<'a> {
     segments: &'a mut Vec<Point>,
     points: &'a [Point],
-    chord_lengths: &'a [f64],
-    error: f64,
+    chord_lengths: &'a [Float],
+    error: Float,
     tan1: Point,
     tan2: Point,
 }
@@ -210,7 +217,7 @@ fn add_curve(segments: &mut Vec<Point>, curve: &[Point;4]) {
 
 #[inline]
 #[allow(non_snake_case)]
-fn generate_bezier(points: &[Point], u_prime: &[f64], tan1: Point, tan2: Point) -> [Point;4] {
+fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point) -> [Point;4] {
 
     assert!(u_prime.len() > 3);
     assert!(points.len() > 3);
@@ -255,7 +262,7 @@ fn generate_bezier(points: &[Point], u_prime: &[f64], tan1: Point, tan2: Point) 
     let mut alpha1;
     let mut alpha2;
 
-    if det_c0_c1.abs() > f64::EPSILON {
+    if det_c0_c1.abs() > Float::EPSILON {
         // Kramer's rule
         let det_c0_x = C[0][0] * X[1]    - C[1][0] * X[0];
         let det_x_c1 = X[0]    * C[1][1] - X[1]    * C[0][1];
@@ -266,9 +273,9 @@ fn generate_bezier(points: &[Point], u_prime: &[f64], tan1: Point, tan2: Point) 
         // Matrix is under-determined, try assuming alpha1 == alpha2
         let c0 = C[0][0] + C[0][1];
         let c1 = C[1][0] + C[1][1];
-        alpha1 = if c0.abs() > f64::EPSILON {
+        alpha1 = if c0.abs() > Float::EPSILON {
             X[0] / c0
-        } else if c1.abs() > f64::EPSILON {
+        } else if c1.abs() > Float::EPSILON {
             X[1] / c1
         } else {
             0.0
@@ -280,7 +287,7 @@ fn generate_bezier(points: &[Point], u_prime: &[f64], tan1: Point, tan2: Point) 
     // (if alpha is 0, you get coincident control points that lead to
     // divide by zero in any subsequent NewtonRaphsonRootFind() call.
     let seg_length = pt2.distance(*pt1);
-    let eps = f64::EPSILON * seg_length;
+    let eps = Float::EPSILON * seg_length;
     let mut handle1_2 = None;
 
     if alpha1 < eps || alpha2 < eps {
@@ -323,7 +330,7 @@ fn generate_bezier(points: &[Point], u_prime: &[f64], tan1: Point, tan2: Point) 
 /// Given set of points and their parameterization, try to find
 /// a better parameterization.
 #[inline]
-fn reparameterize(points: &[Point], u: &mut [f64], curve: &[Point;4]) -> bool {
+fn reparameterize(points: &[Point], u: &mut [Float], curve: &[Point;4]) -> bool {
 
     points.iter().zip(u.iter_mut()).for_each(|(p, u)| { *u = find_root(curve, p, *u); });
 
@@ -333,7 +340,7 @@ fn reparameterize(points: &[Point], u: &mut [f64], curve: &[Point;4]) -> bool {
 }
 
 #[inline]
-fn find_root(curve: &[Point;4], point: &Point, u: f64) -> f64 {
+fn find_root(curve: &[Point;4], point: &Point, u: Float) -> Float {
 
     let mut curve1 = [Point { x: 0.0, y: 0.0 };3];
     let mut curve2 = [Point { x: 0.0, y: 0.0 };2];
@@ -356,7 +363,7 @@ fn find_root(curve: &[Point;4], point: &Point, u: f64) -> f64 {
     let df = pt1.dot(pt1) + diff.dot(pt2);
 
     // Newton: u = u - f(u) / f'(u)
-    if df.abs() < f64::EPSILON {
+    if df.abs() < Float::EPSILON {
         u
     } else {
         u - diff.dot(pt1) / df
@@ -380,13 +387,13 @@ macro_rules! evaluate {
 }
 
 // evaluate the bezier curve at point t
-fn evaluate_4(curve: &[Point;4], t: f64) -> Point { let ret = evaluate!(curve, t); ret }
-fn evaluate_3(curve: &[Point;3], t: f64) -> Point { let ret = evaluate!(curve, t); ret }
-fn evaluate_2(curve: &[Point;2], t: f64) -> Point { let ret = evaluate!(curve, t); ret }
+fn evaluate_4(curve: &[Point;4], t: Float) -> Point { let ret = evaluate!(curve, t); ret }
+fn evaluate_3(curve: &[Point;3], t: Float) -> Point { let ret = evaluate!(curve, t); ret }
+fn evaluate_2(curve: &[Point;2], t: Float) -> Point { let ret = evaluate!(curve, t); ret }
 
 // chord length parametrize the curve points[first..last]
 #[inline]
-fn chord_length_parametrize(points: &[Point]) -> Vec<f64> {
+fn chord_length_parametrize(points: &[Point]) -> Vec<Float> {
 
     let mut u = vec![0.0;points.len()];
     let mut last_dist = 0.0;
@@ -402,13 +409,13 @@ fn chord_length_parametrize(points: &[Point]) -> Vec<f64> {
 
 #[derive(Debug, Copy, Clone)]
 struct FindMaxErrorReturn {
-    error: f64,
+    error: Float,
     index: usize
 }
 
 // find maximum squared distance error between real points and curve
 #[inline]
-fn find_max_error(points: &[Point], curve: &[Point;4], u: &[f64]) -> FindMaxErrorReturn {
+fn find_max_error(points: &[Point], curve: &[Point;4], u: &[Float]) -> FindMaxErrorReturn {
 
     let mut index = points.len() / 2.0 as usize;
     let mut max_dist = 0.0;
@@ -427,5 +434,75 @@ fn find_max_error(points: &[Point], curve: &[Point;4], u: &[f64]) -> FindMaxErro
     FindMaxErrorReturn {
         error: max_dist,
         index: index
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    extern crate test;
+    use test::{Bencher, black_box};
+
+    #[bench]
+    fn bench(b: &mut Bencher) {
+        use crate::Point;
+        let points = vec![
+            Point { x:256.0,                    y:318.0},
+            Point { x:258.6666666666667,        y:315.3333333333333},
+            Point { x:266.6666666666667,        y:308.6666666666667},
+            Point { x:314.0,                    y:274.6666666666667},
+            Point { x:389.3333333333333,        y:218.0},
+            Point { x:448.6666666666667,        y:176.0},
+            Point { x:472.0,                    y:160.66666666666666},
+            Point { x:503.3333333333333,        y:145.33333333333334},
+            Point { x:516.0,                    y:144.66666666666666},
+            Point { x:520.0,                    y:156.66666666666666},
+            Point { x:479.3333333333333,        y:220.66666666666666},
+            Point { x:392.6666666666667,        y:304.0},
+            Point { x:314.0,                    y:376.6666666666667},
+            Point { x:253.33333333333334,       y:436.6666666666667},
+            Point { x:238.0,                    y:454.6666666666667},
+            Point { x:228.66666666666666,       y:468.0},
+            Point { x:236.0,                    y:467.3333333333333},
+            Point { x:293.3333333333333,        y:428.0},
+            Point { x:428.0,                    y:337.3333333333333},
+            Point { x:516.6666666666666,        y:283.3333333333333},
+            Point { x:551.3333333333334,        y:262.0},
+            Point { x:566.6666666666666,        y:253.33333333333334},
+            Point { x:579.3333333333334,        y:246.0},
+            Point { x:590.0,                    y:241.33333333333334},
+            Point { x:566.6666666666666,        y:260.0},
+            Point { x:532.0,                    y:290.6666666666667},
+            Point { x:516.6666666666666,        y:306.0},
+            Point { x:510.6666666666667,        y:313.3333333333333},
+            Point { x:503.3333333333333,        y:324.6666666666667},
+            Point { x:527.3333333333334,        y:324.6666666666667},
+            Point { x:570.6666666666666,        y:313.3333333333333},
+            Point { x:614.0,                    y:302.6666666666667},
+            Point { x:631.3333333333334,        y:301.3333333333333},
+            Point { x:650.0,                    y:300.0},
+            Point { x:658.6666666666666,        y:304.0},
+            Point { x:617.3333333333334,        y:333.3333333333333},
+            Point { x:546.0,                    y:381.3333333333333},
+            Point { x:518.6666666666666,        y:400.6666666666667},
+            Point { x:505.3333333333333,        y:412.6666666666667},
+            Point { x:488.0,                    y:430.6666666666667},
+            Point { x:489.3333333333333,        y:435.3333333333333},
+            Point { x:570.6666666666666,        y:402.0},
+            Point { x:700.0,                    y:328.6666666666667},
+            Point { x:799.3333333333334,        y:266.0},
+            Point { x:838.0,                    y:240.0},
+            Point { x:854.0,                    y:228.66666666666666},
+            Point { x:868.0,                    y:218.66666666666666},
+            Point { x:879.3333333333334,        y:210.66666666666666},
+            Point { x:872.6666666666666,        y:216.0},
+            Point { x:860.0,                    y:223.33333333333334},
+        ];
+
+        // let points = points.repeat(1);       // 50 points: f64 - 50µs, f32 - 50µs
+        // let points = points.repeat(10);      // 500 points: f64 - 830µs, f32 - 781µs
+        // let points = points.repeat(100);     // 5.000 points: f64 - 12.7ms, f32 - 1.27ms
+        // let points = points.repeat(1000);    // 50.000 points: f64 - 167ms, f32 - 65ms
+
+        b.iter(|| { black_box(crate::simplify_curve(&points, 800.0)); });
     }
 }
