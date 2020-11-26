@@ -84,9 +84,11 @@ fn fit(points: &[Point], tolerance: f64) -> Vec<Point> {
     // To support reducing paths with multiple points in the same place
     // to one segment:
     let mut segments = Vec::new();
+    let distances = chord_length_parametrize(points);
 
     fit_cubic(FitCubicParams {
         points,
+        chord_lengths: &distances,
         segments: &mut segments,
         error: tolerance,
         tan1: points[1].subtract(points[0]), // left tangent
@@ -99,6 +101,7 @@ fn fit(points: &[Point], tolerance: f64) -> Vec<Point> {
 struct FitCubicParams<'a> {
     segments: &'a mut Vec<Point>,
     points: &'a [Point],
+    chord_lengths: &'a [f64],
     error: f64,
     tan1: Point,
     tan2: Point,
@@ -106,7 +109,7 @@ struct FitCubicParams<'a> {
 
 fn fit_cubic(params: FitCubicParams) {
 
-    let FitCubicParams { segments, points, error, tan1, tan2 } = params;
+    let FitCubicParams { segments, points, chord_lengths, error, tan1, tan2 } = params;
 
     // Use heuristic if region only has two points in it
     if points.len() < 3 {
@@ -127,7 +130,12 @@ fn fit_cubic(params: FitCubicParams) {
     // points.len() at least 4
 
     // Parameterize points, and attempt to fit curve
-    let mut u_prime = chord_length_parametrize(points);
+    // (Slightly) faster version of chord lengths, re-uses the results from original count
+    let mut u_prime = chord_lengths.to_owned();
+    let u_prime_first = u_prime.first().copied().unwrap();
+    let u_prime_last = u_prime.last().copied().unwrap() - u_prime_first;
+    u_prime.iter_mut().for_each(|p| { *p = (*p - u_prime_first) / u_prime_last; });
+
     let mut max_error = error.max(error.powi(2));
     let mut parameters_in_order = true;
     let mut split = 2;
@@ -163,6 +171,7 @@ fn fit_cubic(params: FitCubicParams) {
         segments,
         error,
         points: &points[..=split],
+        chord_lengths: &chord_lengths[..=split],
         tan1,
         tan2: tan_center
     });
@@ -171,6 +180,7 @@ fn fit_cubic(params: FitCubicParams) {
         segments,
         error,
         points: &points[split..],
+        chord_lengths: &chord_lengths[split..],
         tan1: tan_center.negate(), // todo: ???
         tan2
     });
@@ -291,45 +301,11 @@ fn generate_bezier(points: &[Point], u_prime: &[f64], tan1: Point, tan2: Point) 
     } else {
         [*pt1, pt1.add(tan1.normalize(alpha1)), pt2.add(tan2.normalize(alpha2)), *pt2]
     }
-
-/*
-    // If alpha negative, use the Wu/Barsky heuristic (see text)
-    // (if alpha is 0, you get coincident control points that lead to
-    // divide by zero in any subsequent NewtonRaphsonRootFind() call.
-    var segLength = pt2.getDistance(pt1),
-        eps = epsilon * segLength,
-        handle1,
-        handle2;
-    if (alpha1 < eps || alpha2 < eps) {
-        // fall back on standard (probably inaccurate) formula,
-        // and subdivide further if needed.
-        alpha1 = alpha2 = segLength / 3;
-    } else {
-        // Check if the found control points are in the right order when
-        // projected onto the line through pt1 and pt2.
-        var line = pt2.subtract(pt1);
-        // Control points 1 and 2 are positioned an alpha distance out
-        // on the tangent vectors, left and right, respectively
-        handle1 = tan1.normalize(alpha1);
-        handle2 = tan2.normalize(alpha2);
-        if (handle1.dot(line) - handle2.dot(line) > segLength * segLength) {
-            // Fall back to the Wu/Barsky heuristic above.
-            alpha1 = alpha2 = segLength / 3;
-            handle1 = handle2 = null; // Force recalculation
-        }
-    }
-
-    // First and last control points of the Bezier curve are
-    // positioned exactly at the first and last data points
-    return [pt1,
-            pt1.add(handle1 || tan1.normalize(alpha1)),
-            pt2.add(handle2 || tan2.normalize(alpha2)),
-            pt2];
-*/
 }
 
 /// Given set of points and their parameterization, try to find
 /// a better parameterization.
+#[inline]
 fn reparameterize(points: &[Point], u: &mut [f64], curve: &[Point;4]) -> bool {
 
     points.iter().zip(u.iter_mut()).for_each(|(p, u)| { *u = find_root(curve, p, *u); });
@@ -339,6 +315,7 @@ fn reparameterize(points: &[Point], u: &mut [f64], curve: &[Point;4]) -> bool {
     !u.windows(2).any(|w| w[1] <= w[0])
 }
 
+#[inline]
 fn find_root(curve: &[Point;4], point: &Point, u: f64) -> f64 {
 
     let mut curve1 = [Point { x: 0.0, y: 0.0 };3];
@@ -402,10 +379,6 @@ fn chord_length_parametrize(points: &[Point]) -> Vec<f64> {
         u[next_id] = new_dist;
         last_dist = new_dist;
     }
-
-    let total_distance = u.last().copied().unwrap();
-
-    u.iter_mut().for_each(|p| { *p = *p / total_distance; });
 
     u
 }
