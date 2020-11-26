@@ -57,7 +57,7 @@ fn main() {
         Point { x:860.0,                    y:223.33333333333334},
     ];
 
-    let result = simplify_rs::simplify_curve(&points, 800.0);
+    let result = simplify_rs::simplify(&points, 800.0);
 
     if result.is_empty() {
         println!("no solution!");

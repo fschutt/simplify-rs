@@ -1,29 +1,115 @@
+//! Algorithm for simplifying points to a bezier curve
+//!
+//! ## Example
+//!
+//! ```rust
+//! // example: https://bit.ly/2UYdxLw
+//! let points = vec![
+//!     Point { x:256.0,                    y:318.0},
+//!     Point { x:258.6666666666667,        y:315.3333333333333},
+//!     Point { x:266.6666666666667,        y:308.6666666666667},
+//!     Point { x:314.0,                    y:274.6666666666667},
+//!     Point { x:389.3333333333333,        y:218.0},
+//!     Point { x:448.6666666666667,        y:176.0},
+//!     Point { x:472.0,                    y:160.66666666666666},
+//!     Point { x:503.3333333333333,        y:145.33333333333334},
+//!     Point { x:516.0,                    y:144.66666666666666},
+//!     Point { x:520.0,                    y:156.66666666666666},
+//!     Point { x:479.3333333333333,        y:220.66666666666666},
+//!     Point { x:392.6666666666667,        y:304.0},
+//!     Point { x:314.0,                    y:376.6666666666667},
+//!     Point { x:253.33333333333334,       y:436.6666666666667},
+//!     Point { x:238.0,                    y:454.6666666666667},
+//!     Point { x:228.66666666666666,       y:468.0},
+//!     Point { x:236.0,                    y:467.3333333333333},
+//!     Point { x:293.3333333333333,        y:428.0},
+//!     Point { x:428.0,                    y:337.3333333333333},
+//!     Point { x:516.6666666666666,        y:283.3333333333333},
+//!     Point { x:551.3333333333334,        y:262.0},
+//!     Point { x:566.6666666666666,        y:253.33333333333334},
+//!     Point { x:579.3333333333334,        y:246.0},
+//!     Point { x:590.0,                    y:241.33333333333334},
+//!     Point { x:566.6666666666666,        y:260.0},
+//!     Point { x:532.0,                    y:290.6666666666667},
+//!     Point { x:516.6666666666666,        y:306.0},
+//!     Point { x:510.6666666666667,        y:313.3333333333333},
+//!     Point { x:503.3333333333333,        y:324.6666666666667},
+//!     Point { x:527.3333333333334,        y:324.6666666666667},
+//!     Point { x:570.6666666666666,        y:313.3333333333333},
+//!     Point { x:614.0,                    y:302.6666666666667},
+//!     Point { x:631.3333333333334,        y:301.3333333333333},
+//!     Point { x:650.0,                    y:300.0},
+//!     Point { x:658.6666666666666,        y:304.0},
+//!     Point { x:617.3333333333334,        y:333.3333333333333},
+//!     Point { x:546.0,                    y:381.3333333333333},
+//!     Point { x:518.6666666666666,        y:400.6666666666667},
+//!     Point { x:505.3333333333333,        y:412.6666666666667},
+//!     Point { x:488.0,                    y:430.6666666666667},
+//!     Point { x:489.3333333333333,        y:435.3333333333333},
+//!     Point { x:570.6666666666666,        y:402.0},
+//!     Point { x:700.0,                    y:328.6666666666667},
+//!     Point { x:799.3333333333334,        y:266.0},
+//!     Point { x:838.0,                    y:240.0},
+//!     Point { x:854.0,                    y:228.66666666666666},
+//!     Point { x:868.0,                    y:218.66666666666666},
+//!     Point { x:879.3333333333334,        y:210.66666666666666},
+//!     Point { x:872.6666666666666,        y:216.0},
+//!     Point { x:860.0,                    y:223.33333333333334},
+//! ];
+//!
+//! let result = simplify_rs::simplify(&points, 800.0);
+//!
+//! if result.is_empty() {
+//!     println!("no solution!");
+//! } else if result.len() == 1 {
+//!     println!("solution:\r\n\tpoint {:?}", result[0]);
+//! } else if result.len() == 2 {
+//!     println!("solution:\r\n\tline {:?} - {:?}", result[0], result[1]);
+//! } else {
+//!     println!("solution:");
+//!     for cubic_curve in result.chunks_exact(4) {
+//!         println!("\tcubic curve: [");
+//!         println!("\t\t{:?}", cubic_curve[0]);
+//!         println!("\t\t{:?}", cubic_curve[1]);
+//!         println!("\t\t{:?}", cubic_curve[2]);
+//!         println!("\t\t{:?}", cubic_curve[3]);
+//!         println!("\t]");
+//!     }
+//! }
+//! ```
+//!
+//! ## Performance
+//!
+//! The JavaScript (paper.js) version takes about 6 - 7ms to generalize the 50 points,
+//! the Rust version takes ~40 - 50µs.
+
 use std::ops::Range;
 use std::hint::unreachable_unchecked;
 
 #[cfg(not(feature = "double_precision"))]
-pub type Float = f32;
+type Float = f32;
 #[cfg(feature = "double_precision")]
-pub type Float = f64;
+type Float = f64;
 
+/// A 2D point
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Point { pub x: Float, pub y: Float }
 
 impl Point {
     #[inline]
-    pub fn add(&self, p: Point) -> Point { Point { x: self.x + p.x, y: self.y + p.y } }
+    fn add(&self, p: Point) -> Point { Point { x: self.x + p.x, y: self.y + p.y } }
     #[inline]
-    pub fn subtract(&self, p: Point) -> Point { Point { x: self.x - p.x, y: self.y - p.y } }
+    fn subtract(&self, p: Point) -> Point { Point { x: self.x - p.x, y: self.y - p.y } }
     #[inline]
-    pub fn multiply(&self, f: Float) -> Point { Point { x: self.x * f, y: self.y * f } }
+    fn multiply(&self, f: Float) -> Point { Point { x: self.x * f, y: self.y * f } }
     #[inline]
-    pub fn negate(&self) -> Point { Point { x: -self.x, y: -self.y } }
+    fn negate(&self) -> Point { Point { x: -self.x, y: -self.y } }
     #[inline]
-    pub fn distance(&self, p: Point) -> Float { let dx = p.x - self.x; let dy = p.y - self.y; dx * dx + dy * dy /* fastest version */}
+    fn distance(&self, p: Point) -> Float { let dx = p.x - self.x; let dy = p.y - self.y; dx * dx + dy * dy /* fastest version */}
     #[inline]
-    pub fn dot(&self, p: Point) -> Float { self.x * p.x + self.y * p.y }
+    fn dot(&self, p: Point) -> Float { self.x * p.x + self.y * p.y }
     #[inline]
-    pub fn normalize(&self, length: Float) -> Point {
+    fn normalize(&self, length: Float) -> Point {
         let current =  self.x.hypot(self.y);
         let scale = if current.abs() > Float::EPSILON { length / current } else { 0.0 };
         let res = Point { x: self.x * scale, y: self.y * scale };
@@ -31,26 +117,25 @@ impl Point {
     }
 }
 
-/// Default value for the `simplify_curve(tolerance)` parameter
+/// Default value for the `simplify(tolerance)` parameter
 pub const DEFAULT_TOLERANCE: f32 = 2.5;
 
 /// Fits a sequence of as few curves as possible through the path's anchor
 /// points, ignoring the path items's curve-handles, with an allowed maximum
-/// error. When called on {@link CompoundPath} items, each of the nested
-/// paths is simplified. On {@link Path} items, the {@link Path#segments}
-/// array is processed and replaced by the resulting sequence of fitted
-/// curves.
-///
-/// This method can be used to process and simplify the point data received
+/// error. This method can be used to process and simplify the point data received
 /// from a mouse or touch device.
 ///
-/// @param tolerance - the allowed maximum error when fitting
-///     the curves through the segment points
+/// - `tolerance`: the allowed maximum error when fitting the curves through the segment points
 ///
-/// @return true if the method was capable of fitting curves
-///     through the path's segment points
+/// # Returns
 ///
-pub fn simplify_curve(points: &[Point], tolerance: Float) -> Vec<Point> {
+/// - returns the input if the input is less than 3 points
+/// - x * 4 points (representing cubic bezier curves with duplicated start / end points)
+///   if the input is more than 3 points
+///
+/// **NOTE**: Depending on the tolerance, the endpoint of the input points and
+/// the endpoint of the simplified curve do not have to match up
+pub fn simplify(points: &[Point], tolerance: Float) -> Vec<Point> {
 
     // filter points for duplicates
     let mut cur_points = points.windows(2).filter_map(|w| {
