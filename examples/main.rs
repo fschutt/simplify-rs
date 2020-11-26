@@ -2,6 +2,8 @@ use simplify_rs::Point;
 use std::time::Instant;
 
 fn main() {
+
+    // example: https://bit.ly/2UYdxLw
     let points = vec![
         Point { x:256.0,                    y:318.0},
         Point { x:258.6666666666667,        y:315.3333333333333},
@@ -55,18 +57,8 @@ fn main() {
         Point { x:860.0,                    y:223.33333333333334},
     ];
 
-    // unoptimized: 96.1µs
-    // noalloc: 86.496µs
-    // noloop:
-    for _ in 0..100 {
-        let now = Instant::now();
-        let result = simplify_rs::simplify_curve(&points, 800.0);
-        println!("time: {:?}", Instant::now() - now);
-    }
-/*
-    // example solution: https://bit.ly/2UYdxLw
-    // note: y is inverted,
-    // note: the second and third points denote the "handle in" / "handle out", i.e they have to be added to the first point X / Y
+    let result = simplify_rs::simplify_curve(&points, 800.0);
+
     if result.is_empty() {
         println!("no solution!");
     } else if result.len() == 1 {
@@ -84,6 +76,4 @@ fn main() {
             println!("\t]");
         }
     }
-*/
-
 }
