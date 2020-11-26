@@ -78,6 +78,14 @@ pub fn simplify_curve(points: &[Point], tolerance: f64) -> Vec<Point> {
     fit(&cur_points[..], tolerance)
 }
 
+#[derive(Copy, Clone)]
+struct Split {
+    global_range_start: usize,
+    global_range_end: usize,
+    tan1: Point,
+    tan2: Point,
+}
+
 #[inline]
 fn fit(points: &[Point], tolerance: f64) -> Vec<Point> {
 
@@ -86,14 +94,42 @@ fn fit(points: &[Point], tolerance: f64) -> Vec<Point> {
     let mut segments = Vec::new();
     let distances = chord_length_parametrize(points);
 
-    fit_cubic(FitCubicParams {
-        points,
-        chord_lengths: &distances,
-        segments: &mut segments,
-        error: tolerance,
-        tan1: points[1].subtract(points[0]), // left tangent
-        tan2: points[points.len() - 2].subtract(points[points.len() - 1]), // right tangent
-    });
+    let mut splits_to_eval = vec![Split {
+        global_range_start: 0,
+        global_range_end: points.len(),
+        tan1: points[1].subtract(points[0]),
+        tan2: points[points.len() - 2].subtract(points[points.len() - 1]),
+    }];
+
+    while let Some(split) = splits_to_eval.pop() {
+        let result = fit_cubic(FitCubicParams {
+            points: &points[split.global_range_start..split.global_range_end],
+            chord_lengths: &distances[split.global_range_start..split.global_range_end],
+            segments: &mut segments,
+            error: tolerance,
+            tan1: split.tan1,
+            tan2: split.tan2,
+        });
+
+        if let Some(r) = result {
+            // Fitting failed -- split at max error point and fit recursively
+            let tan_center = points[split.global_range_start + r - 1].subtract(points[split.global_range_start + r + 1]);
+            splits_to_eval.extend_from_slice(&[
+                Split {
+                    global_range_start: split.global_range_start,
+                    global_range_end: split.global_range_start + r + 1,
+                    tan1: split.tan1,
+                    tan2: tan_center,
+                },
+                Split {
+                    global_range_start: split.global_range_start + r,
+                    global_range_end: split.global_range_end,
+                    tan1: tan_center.negate(),
+                    tan2: split.tan2,
+                },
+            ]);
+        }
+    }
 
     segments
 }
@@ -107,13 +143,13 @@ struct FitCubicParams<'a> {
     tan2: Point,
 }
 
-fn fit_cubic(params: FitCubicParams) {
+fn fit_cubic(params: FitCubicParams) -> Option<usize> {
 
     let FitCubicParams { segments, points, chord_lengths, error, tan1, tan2 } = params;
 
     // Use heuristic if region only has two points in it
     if points.len() < 3 {
-        return;
+        return None;
     } else if points.len() == 3 {
         let pt1 = points[0];
         let pt2 = points[2];
@@ -124,7 +160,7 @@ fn fit_cubic(params: FitCubicParams) {
             pt2.add(tan2.normalize(dist)),
             pt2
         ]);
-        return;
+        return None;
     }
 
     // points.len() at least 4
@@ -151,7 +187,7 @@ fn fit_cubic(params: FitCubicParams) {
         if max.error < error && parameters_in_order {
             // solution found
             add_curve(segments, &curve);
-            return;
+            return None;
         }
 
         split = max.index;
@@ -164,26 +200,7 @@ fn fit_cubic(params: FitCubicParams) {
         max_error = max.error;
     }
 
-    // Fitting failed -- split at max error point and fit recursively
-    let tan_center = points[split - 1].subtract(points[split + 1]);
-    // TODO: eliminate recursion
-    fit_cubic(FitCubicParams {
-        segments,
-        error,
-        points: &points[..=split],
-        chord_lengths: &chord_lengths[..=split],
-        tan1,
-        tan2: tan_center
-    });
-
-    fit_cubic(FitCubicParams {
-        segments,
-        error,
-        points: &points[split..],
-        chord_lengths: &chord_lengths[split..],
-        tan1: tan_center.negate(), // todo: ???
-        tan2
-    });
+    Some(split)
 }
 
 #[inline]
