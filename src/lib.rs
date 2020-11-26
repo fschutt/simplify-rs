@@ -21,7 +21,7 @@ impl Point {
     #[inline]
     pub fn negate(&self) -> Point { Point { x: -self.x, y: -self.y } }
     #[inline]
-    pub fn distance(&self, p: Point) -> Float { (p.x - self.x).hypot(p.y - self.y) }
+    pub fn distance(&self, p: Point) -> Float { let dx = p.x - self.x; let dy = p.y - self.y; dx * dx + dy * dy /* fastest version */}
     #[inline]
     pub fn dot(&self, p: Point) -> Float { self.x * p.x + self.y * p.y }
     #[inline]
@@ -130,8 +130,8 @@ fn fit(points: &[Point], tolerance: Float) -> Vec<Point> {
 
     while let Some(split) = splits_to_eval.pop() {
 
-        // elide bounds checks
-        if split.global_range.end > points.len() {
+        // elide slice checks
+        if split.global_range.end > points.len() || split.global_range.end > distances.len() {
             continue;
         }
 
@@ -145,8 +145,17 @@ fn fit(points: &[Point], tolerance: Float) -> Vec<Point> {
         });
 
         if let Some(r) = result {
+            // elide slice checks
+            if split.global_range.start > split.global_range.start + r + 1 ||
+               split.global_range.start + r > split.global_range.end {
+                continue;
+            }
+            if split.global_range.start + r + 1 >= points.len() || split.global_range.start + r - 1 >= points.len() {
+                continue;
+            }
             // Fitting failed -- split at max error point and fit recursively
             let tan_center = points[split.global_range.start + r - 1].subtract(points[split.global_range.start + r + 1]);
+
             splits_to_eval.extend_from_slice(&[
                 Split {
                     global_range: split.global_range.start..(split.global_range.start + r + 1),
@@ -174,6 +183,7 @@ struct FitCubicParams<'a> {
     tan2: Point,
 }
 
+#[inline]
 fn fit_cubic(params: FitCubicParams) -> Option<usize> {
 
     let FitCubicParams { segments, points, chord_lengths, error, tan1, tan2 } = params;
@@ -434,7 +444,7 @@ fn chord_length_parametrize(points: &[Point]) -> Vec<Float> {
 
     for (prev, (next_id, next)) in points.iter().zip(points.iter().enumerate().skip(1)) {
         let new_dist = last_dist + prev.distance(*next);
-        u[next_id] = new_dist;
+        unsafe { *u.get_unchecked_mut(next_id) = new_dist; }
         last_dist = new_dist;
     }
 
@@ -531,10 +541,10 @@ mod bench {
             Point { x:860.0,                    y:223.33333333333334},
         ];
 
-        // let points = points.repeat(1);       // 50 points: f64 - 50µs, f32 - 50µs
-        // let points = points.repeat(10);      // 500 points: f64 - 830µs, f32 - 781µs
-        // let points = points.repeat(100);     // 5.000 points: f64 - 12.7ms, f32 - 1.27ms
-        // let points = points.repeat(1000);    // 50.000 points: f64 - 167ms, f32 - 65ms
+        // let points = points.repeat(1);       // 50 points: f64 - 50µs, f32 - 42µs
+        // let points = points.repeat(10);      // 500 points: f64 - 830µs, f32 - 619µs
+        // let points = points.repeat(100);     // 5.000 points: f64 - 9ms, f32 - 7ms
+        // let points = points.repeat(1000);    // 50.000 points: f64 - 167ms, f32 - 87ms
 
         b.iter(|| { black_box(crate::simplify_curve(&points, 800.0)); });
     }
