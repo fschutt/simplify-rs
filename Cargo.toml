@@ -5,4 +5,3 @@ authors = ["fschutt <felix.schuett@maps4print.com>"]
 edition = "2018"
 
 [dependencies]
-beziercurve-wkt = { version = "0.1.2", default-features = false }
