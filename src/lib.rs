@@ -97,17 +97,49 @@ pub struct Point { pub x: Float, pub y: Float }
 
 impl Point {
     #[inline]
-    fn add(&self, p: Point) -> Point { Point { x: self.x + p.x, y: self.y + p.y } }
+    fn add(&self, p: Point) -> Point {
+        Point {
+            x: self.x + p.x,
+            y: self.y + p.y
+        }
+    }
+
     #[inline]
-    fn subtract(&self, p: Point) -> Point { Point { x: self.x - p.x, y: self.y - p.y } }
+    fn subtract(&self, p: Point) -> Point {
+        Point {
+            x: self.x - p.x,
+            y: self.y - p.y
+        }
+    }
+
     #[inline]
-    fn multiply(&self, f: Float) -> Point { Point { x: self.x * f, y: self.y * f } }
+    fn multiply(&self, f: Float) -> Point {
+        Point {
+            x: self.x * f,
+            y: self.y * f
+        }
+    }
+
     #[inline]
-    fn negate(&self) -> Point { Point { x: -self.x, y: -self.y } }
+    fn negate(&self) -> Point {
+        Point {
+            x: -self.x,
+            y: -self.y
+        }
+    }
+
     #[inline]
-    fn distance(&self, p: Point) -> Float { let dx = p.x - self.x; let dy = p.y - self.y; dx * dx + dy * dy /* fastest version */}
+    fn distance(&self, p: Point) -> Float {
+        let dx = p.x - self.x;
+        let dy = p.y - self.y;
+        dx.hypot(dy)
+    }
+
     #[inline]
-    fn dot(&self, p: Point) -> Float { self.x * p.x + self.y * p.y }
+    fn dot(&self, p: Point) -> Float {
+        self.x * p.x + self.y * p.y
+    }
+
     #[inline]
     fn normalize(&self, length: Float) -> Point {
         let current =  self.x.hypot(self.y);
