@@ -83,17 +83,26 @@
 //! The JavaScript (paper.js) version takes about 6 - 7ms to generalize the 50 points,
 //! the Rust version takes ~40 - 50µs.
 
-use std::ops::Range;
-use std::hint::unreachable_unchecked;
+extern crate core;
 
-#[cfg(not(feature = "double_precision"))]
-type Float = f32;
+use core::ops::Range;
+use core::hint::unreachable_unchecked;
+use core::fmt;
+
 #[cfg(feature = "double_precision")]
+type Float = f32;
+#[cfg(not(feature = "double_precision"))]
 type Float = f64;
 
 /// A 2D point
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub struct Point { pub x: Float, pub y: Float }
+
+impl fmt::Debug for Point {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{\"x\":{},\"y\":{}}}", self.x, self.y)
+    }
+}
 
 impl Point {
     #[inline]
@@ -231,62 +240,65 @@ fn fit(points: &[Point], tolerance: Float) -> Vec<Point> {
     }
 
     // elide bounds checks
-    if points.len() < 2 {
-        return segments;
+    if points.len() == 0 {
+        return Vec::new();
+    } else if points.len() == 1 {
+        return vec![points[0]];
     } else if points.len() == 2 {
         return vec![points[0], points[1]];
-    }
+    } else {
+        let mut splits_to_eval = vec![Split {
+            global_range: 0..points.len(),
+            tan1: points[1].subtract(points[0]),
+            tan2: points[points.len() - 2].subtract(points[points.len() - 1]),
+        }];
 
-    let mut splits_to_eval = vec![Split {
-        global_range: 0..points.len(),
-        tan1: points[1].subtract(points[0]),
-        tan2: points[points.len() - 2].subtract(points[points.len() - 1]),
-    }];
+        while let Some(split) = splits_to_eval.pop() {
 
-    while let Some(split) = splits_to_eval.pop() {
-
-        // elide slice checks
-        if split.global_range.end > points.len() || split.global_range.end > distances.len() {
-            continue;
-        }
-
-        let result = fit_cubic(FitCubicParams {
-            points: &points[split.global_range.clone()],
-            chord_lengths: &distances[split.global_range.clone()],
-            segments: &mut segments,
-            error: tolerance,
-            tan1: split.tan1,
-            tan2: split.tan2,
-        });
-
-        if let Some(r) = result {
             // elide slice checks
-            if split.global_range.start > split.global_range.start + r + 1 ||
-               split.global_range.start + r > split.global_range.end {
+            if split.global_range.end > points.len() || split.global_range.end > distances.len() {
                 continue;
             }
-            if split.global_range.start + r + 1 >= points.len() || split.global_range.start + r - 1 >= points.len() {
-                continue;
-            }
-            // Fitting failed -- split at max error point and fit recursively
-            let tan_center = points[split.global_range.start + r - 1].subtract(points[split.global_range.start + r + 1]);
 
-            splits_to_eval.extend_from_slice(&[
-                Split {
-                    global_range: split.global_range.start..(split.global_range.start + r + 1),
-                    tan1: split.tan1,
-                    tan2: tan_center,
-                },
-                Split {
-                    global_range: (split.global_range.start + r)..split.global_range.end,
-                    tan1: tan_center.negate(),
-                    tan2: split.tan2,
-                },
-            ]);
+            let result = fit_cubic(FitCubicParams {
+                points: &points[split.global_range.clone()],
+                chord_lengths: &distances[split.global_range.clone()],
+                segments: &mut segments,
+                error: tolerance,
+                tan1: split.tan1,
+                tan2: split.tan2,
+            });
+
+            if let Some(r) = result {
+                // elide slice checks
+                if split.global_range.start > split.global_range.start + r + 1 ||
+                   split.global_range.start + r > split.global_range.end {
+                    continue;
+                }
+                if split.global_range.start + r + 1 >= points.len() || split.global_range.start + r - 1 >= points.len() {
+                    continue;
+                }
+                // Fitting failed -- split at max error point and fit recursively
+                let tan_center = points[split.global_range.start + r - 1].subtract(points[split.global_range.start + r + 1]);
+
+                splits_to_eval.extend_from_slice(&[
+                    Split {
+                        global_range: (split.global_range.start + r)..split.global_range.end,
+                        tan1: tan_center.negate(),
+                        tan2: split.tan2,
+                    },
+                    Split {
+                        global_range: split.global_range.start..(split.global_range.start + r + 1),
+                        tan1: split.tan1,
+                        tan2: tan_center,
+                    },
+                ]);
+            }
         }
+
+        segments
     }
 
-    segments
 }
 
 struct FitCubicParams<'a> {
@@ -304,11 +316,11 @@ fn fit_cubic(params: FitCubicParams) -> Option<usize> {
     let FitCubicParams { segments, points, chord_lengths, error, tan1, tan2 } = params;
 
     // Use heuristic if region only has two points in it
-    if points.len() < 3 {
+    if points.len() < 2 {
         return None;
-    } else if points.len() == 3 {
+    } else if points.len() == 2 {
         let pt1 = points[0];
-        let pt2 = points[2];
+        let pt2 = points[1];
         let dist = pt1.distance(pt2) / 3.0;
         add_curve(segments, &[
             pt1,
@@ -375,6 +387,8 @@ fn add_curve(segments: &mut Vec<Point>, curve: &[Point;4]) {
 #[allow(non_snake_case)]
 fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point) -> [Point;4] {
 
+    const BEZIER_EPSILON: Float = 1e-12;
+
     debug_assert!(u_prime.len() > 3);
     debug_assert!(points.len() > 3);
     debug_assert!(u_prime.len() == points.len());
@@ -418,7 +432,7 @@ fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point
     let mut alpha1;
     let mut alpha2;
 
-    if det_c0_c1.abs() > Float::EPSILON {
+    if det_c0_c1.abs() > BEZIER_EPSILON {
         // Kramer's rule
         let det_c0_x = C[0][0] * X[1]    - C[1][0] * X[0];
         let det_x_c1 = X[0]    * C[1][1] - X[1]    * C[0][1];
@@ -429,9 +443,9 @@ fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point
         // Matrix is under-determined, try assuming alpha1 == alpha2
         let c0 = C[0][0] + C[0][1];
         let c1 = C[1][0] + C[1][1];
-        alpha1 = if c0.abs() > Float::EPSILON {
+        alpha1 = if c0.abs() > BEZIER_EPSILON {
             X[0] / c0
-        } else if c1.abs() > Float::EPSILON {
+        } else if c1.abs() > BEZIER_EPSILON {
             X[1] / c1
         } else {
             0.0
@@ -443,7 +457,7 @@ fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point
     // (if alpha is 0, you get coincident control points that lead to
     // divide by zero in any subsequent NewtonRaphsonRootFind() call.
     let seg_length = pt2.distance(*pt1);
-    let eps = Float::EPSILON * seg_length;
+    let eps = BEZIER_EPSILON * seg_length;
     let mut handle1_2 = None;
 
     if alpha1 < eps || alpha2 < eps {
@@ -561,6 +575,10 @@ fn chord_length_parametrize(points: &[Point]) -> Vec<Float> {
         let new_dist = last_dist + prev.distance(*next);
         unsafe { *u.get_unchecked_mut(next_id) = new_dist; }
         last_dist = new_dist;
+    }
+
+    for val in u.iter_mut() {
+        *val /= last_dist;
     }
 
     u
