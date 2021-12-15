@@ -389,8 +389,8 @@ fn generate_bezier(points: &[Point], u_prime: &[Float], tan1: Point, tan2: Point
 
     const BEZIER_EPSILON: Float = 1e-12;
 
-    debug_assert!(u_prime.len() > 3);
-    debug_assert!(points.len() > 3);
+    debug_assert!(u_prime.len() > 2);
+    debug_assert!(points.len() > 2);
     debug_assert!(u_prime.len() == points.len());
 
     let pt1 = &points[0];
