@@ -89,13 +89,18 @@ use core::ops::Range;
 use core::hint::unreachable_unchecked;
 use core::fmt;
 
+use wasm_bindgen::prelude::*;
+use serde::{Serialize, Deserialize};
+use serde_wasm_bindgen::{to_value, from_value};
+
 #[cfg(feature = "double_precision")]
 type Float = f32;
 #[cfg(not(feature = "double_precision"))]
 type Float = f64;
 
 /// A 2D point
-#[derive(Copy, Clone, PartialEq, PartialOrd)]
+#[wasm_bindgen]
+#[derive(Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Point { pub x: Float, pub y: Float }
 
 impl fmt::Debug for Point {
@@ -104,7 +109,12 @@ impl fmt::Debug for Point {
     }
 }
 
+#[wasm_bindgen]
 impl Point {
+    #[wasm_bindgen(constructor)]
+    pub fn new(x: f64, y: f64) -> Point {
+        Point { x, y }
+    }
     #[inline]
     fn add(&self, p: Point) -> Point {
         Point {
@@ -160,6 +170,69 @@ impl Point {
 
 /// Default value for the `simplify(tolerance)` parameter
 pub const DEFAULT_TOLERANCE: f32 = 2.5;
+pub const TARGET_AUTO_SCALE_AREA: Float = 1000000.0;
+
+/// WASM function to simplify a path represented by a sequence of points
+/// to a bezier curve with a maximum error tolerance.
+/// The input points are expected to be in the format:
+/// [{x: 0, y: 0}, {x: 1, y: 1}, ...]
+///
+/// - `tolerance`: the allowed maximum error when fitting the curves through the segment points
+///
+/// - `auto_scale_for_precision``: if true, the polygon will be scaled to a target area
+/// of TARGET_AUTO_SCALE_AREA before simplification and scaled back to the original scale
+/// after simplification. This increases the precision of the simplification.
+///
+/// # Returns
+///
+/// The output is a sequence of cubic bezier curves, each represented by 4 points:
+/// [{x: 0, y: 0}, {x: 1, y: 1}, {x: 2, y: 2}, {x: 3, y: 3}]
+/// [0] = start point
+/// [1] = control point 1
+/// [2] = control point 2
+/// [3] = end point
+#[wasm_bindgen]
+pub fn simplify_js(points_js: &JsValue, tolerance: f64, auto_scale_for_precision: bool) -> JsValue {
+    // Deserialize the points from JsValue using serde_wasm_bindgen
+    let mut points: Vec<Point> = from_value(points_js.clone()).unwrap();
+
+    let mut scale = 1.0;
+    // calculate area of the polygon
+    if auto_scale_for_precision {
+        let mut area = 0.0;
+        let mut j = points.len() - 1;
+        for i in 0..points.len() {
+            area += (points[j].x + points[i].x) * (points[j].y - points[i].y);
+            j = i;
+        }
+        area *= 0.5;
+        area = area.abs();
+
+        // scale the polygon to a target area
+        scale = TARGET_AUTO_SCALE_AREA / area;
+
+        for p in points.iter_mut() {
+            p.x *= scale;
+            p.y *= scale;
+        }
+    }
+
+    let scaled_tolerance = tolerance as Float * scale;
+
+    // Call the existing Rust `simplify` function with deserialized points
+    let mut simplified = simplify(&points, scaled_tolerance);
+
+    // scale the simplified polygon back to the original scale
+    if auto_scale_for_precision {
+        for p in simplified.iter_mut() {
+            p.x /= scale;
+            p.y /= scale;
+        }
+    }
+
+    // Serialize the result back into JsValue using serde_wasm_bindgen
+    to_value(&simplified).unwrap()
+}
 
 /// Fits a sequence of as few curves as possible through the path's anchor
 /// points, ignoring the path items's curve-handles, with an allowed maximum

@@ -1,0 +1,30 @@
+{
+  "name": "simplify-rs",
+  "collaborators": [
+    "Felix Schütt <felix.schuett@maps4print.com>"
+  ],
+  "description": "Algorithm for converting points to smooth bezier curves, ported from paper.js",
+  "version": "0.1.3",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fschutt/simplify-rs"
+  },
+  "files": [
+    "simplify_rs_bg.wasm",
+    "simplify_rs.js",
+    "simplify_rs.d.ts"
+  ],
+  "module": "simplify_rs.js",
+  "types": "simplify_rs.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "keywords": [
+    "svg",
+    "simplify",
+    "bezier",
+    "svg",
+    "graphics"
+  ]
+}
