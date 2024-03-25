@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en" style="background:black;">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Simplify Rust WASM - ES6 - Example Basic</title>
+	<script src="../draw.js"></script>
+</head>
+<body>
+	<script>
+		// Example points
+		const points = [
+			{x:256.0, y:318.0},
+			{x:258.6666666666667, y:315.3333333333333},
+			{x:266.6666666666667, y:308.6666666666667},
+			{x:314.0, y:274.6666666666667},
+			{x:389.3333333333333, y:218.0},
+			{x:448.6666666666667, y:176.0},
+			{x:472.0, y:160.66666666666666},
+			{x:503.3333333333333, y:145.33333333333334},
+			{x:516.0, y:144.66666666666666},
+			{x:520.0, y:156.66666666666666},
+			{x:479.3333333333333, y:220.66666666666666},
+			{x:392.6666666666667, y:304.0},
+			{x:314.0, y:376.6666666666667},
+			{x:253.33333333333334, y:436.6666666666667},
+			{x:238.0, y:454.6666666666667},
+			{x:228.66666666666666, y:468.0},
+			{x:236.0, y:467.3333333333333},
+			{x:293.3333333333333, y:428.0},
+			{x:428.0, y:337.3333333333333},
+			{x:516.6666666666666, y:283.3333333333333},
+			{x:551.3333333333334, y:262.0},
+			{x:566.6666666666666, y:253.33333333333334},
+			{x:579.3333333333334, y:246.0},
+			{x:590.0, y:241.33333333333334},
+			{x:566.6666666666666, y:260.0},
+			{x:532.0, y:290.6666666666667},
+			{x:516.6666666666666, y:306.0},
+			{x:510.6666666666667, y:313.3333333333333},
+			{x:503.3333333333333, y:324.6666666666667},
+			{x:527.3333333333334, y:324.6666666666667},
+			{x:570.6666666666666, y:313.3333333333333},
+			{x:614.0, y:302.6666666666667},
+			{x:631.3333333333334, y:301.3333333333333},
+			{x:650.0, y:300.0},
+			{x:658.6666666666666, y:304.0},
+			{x:617.3333333333334, y:333.3333333333333},
+			{x:546.0, y:381.3333333333333},
+			{x:518.6666666666666, y:400.6666666666667},
+			{x:505.3333333333333, y:412.6666666666667},
+			{x:488.0, y:430.6666666666667},
+			{x:489.3333333333333, y:435.3333333333333},
+			{x:570.6666666666666, y:402.0},
+			{x:700.0, y:328.6666666666667},
+			{x:799.3333333333334, y:266.0},
+			{x:838.0, y:240.0},
+			{x:854.0, y:228.66666666666666},
+			{x:868.0, y:218.66666666666666},
+			{x:879.3333333333334, y:210.66666666666666},
+			{x:872.6666666666666, y:216.0},
+			{x:860.0, y:223.33333333333334},
+		];
+
+		initCanvas(1000, 1000);
+
+	</script>
+
+	<script type="module">
+		import init, { simplify_js } from '../../simplify_rs.js';
+
+		async function run() {
+			await init();
+
+			drawPoints(points);
+
+			const tolerance = 0.1;
+
+			// Simplify points
+			const timeStart = performance.now();
+			const simplifiedPoints = simplify_js(points, tolerance);
+			const timeEnd = performance.now();
+
+			console.log(simplifiedPoints);
+
+			drawBezierCurves(simplifiedPoints);
+			drawControlPoints(simplifiedPoints);
+
+			drawText(`Simplify_rs Simplify time: ${timeEnd - timeStart}ms`, 20, 20, 'white');
+		}
+
+		run();
+	</script>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-full.min.js"></script>
+	<script>
+			// now do the same in Paper.js
+			paper.setup('');
+
+			const paperPolygon = new paper.Path({});
+
+			points.forEach((v) => {
+				paperPolygon.add(new paper.Point(v.x, v.y));
+			});
+
+			paperPolygon.closed = true;
+
+			const timeStart = performance.now();
+			paperPolygon.simplify(100);
+			const timeEnd = performance.now();
+
+			console.log('dafuq');
+
+			drawText(`Paper.js Simplify time: ${timeEnd - timeStart}ms`, 20, 40, 'white');
+
+	</script>
+
+
+</body>
+</html>
