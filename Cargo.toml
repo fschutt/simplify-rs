@@ -1,6 +1,6 @@
 [package]
 name = "simplify-rs"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Felix Schütt <felix.schuett@maps4print.com>"]
 license = "MIT"
 description = "Algorithm for converting points to smooth bezier curves, ported from paper.js"
